@@ -1,17 +1,12 @@
 import { Composer } from "grammy";
-
-// SCAFFOLD — generated from the bot blueprint BEFORE the agent runs.
-// Keep a LIVE registration (.command / .callbackQuery / …) so this feature is
-// never an empty stub. Replace the reply body with real logic + copy; if you
-// change the user-facing text, update tests/specs to match EXACTLY.
-// Do NOT rewrite src/bot.ts — buildBot() already auto-loads this module.
-// Menu: wire this into /start via registerMainMenuItem({ label: "Create Habit", data: "create_habit:start" }) if the toolkit exposes it.
-
-const composer = new Composer();
-
-composer.callbackQuery("create_habit:start", async (ctx) => {
-  await ctx.answerCallbackQuery();
-  await ctx.reply("Start creating a new personal habit");
-});
-
+import type { Ctx } from "../bot.js";
+import { CATEGORIES, escapeText, hub } from "../domain.js";
+import { inlineButton, inlineKeyboard, registerMainMenuItem } from "../toolkit/index.js";
+registerMainMenuItem({ label: "Create habit", data: "create_habit:start", order: 20 });
+const composer = new Composer<Ctx>();
+composer.callbackQuery("create_habit:start", async (ctx) => { await ctx.answerCallbackQuery(); hub(ctx).flow = { kind: "habit", step: "category", draft: {} }; await ctx.reply("Choose a category for this habit.", { reply_markup: inlineKeyboard([...CATEGORIES.map((c) => [inlineButton(c, `habit:category:${c}`)]), [inlineButton("Custom category", "habit:category:custom")]]) }); });
+composer.callbackQuery(/^habit:category:(.+)$/, async (ctx) => { await ctx.answerCallbackQuery(); const flow = hub(ctx).flow; if (!flow || flow.kind !== "habit") return; flow.draft.category = ctx.match[1] === "custom" ? "Custom" : ctx.match[1]; flow.step = "title"; await ctx.reply("Send the habit title, for example Drink water."); });
+composer.on("message:text", async (ctx, next) => { const data = hub(ctx); const flow = data.flow; if (!flow || flow.kind !== "habit" || ctx.message.text.startsWith("/")) return next(); const value = escapeText(ctx.message.text); if (!value) { await ctx.reply("That looks blank. Send a short title or description."); return; } if (flow.step === "title") { flow.draft.title = value; flow.step = "description"; await ctx.reply("Add a short description, or send Skip."); return; } if (flow.step === "description") { flow.draft.description = value.toLowerCase() === "skip" ? "" : value; flow.step = "repeat"; await ctx.reply("How often should this habit repeat?", { reply_markup: inlineKeyboard([[inlineButton("Daily", "habit:repeat:daily"), inlineButton("Weekdays", "habit:repeat:weekdays")], [inlineButton("Times each week", "habit:repeat:weekly")]]) }); return; } if (flow.step === "frequency") { const frequency = Number(value); if (!Number.isInteger(frequency) || frequency < 1 || frequency > 7) { await ctx.reply("Choose a number from 1 to 7 for each week."); return; } flow.draft.frequency = frequency; saveHabit(ctx); } });
+composer.callbackQuery(/^habit:repeat:(daily|weekdays|weekly)$/, async (ctx) => { await ctx.answerCallbackQuery(); const flow = hub(ctx).flow; if (!flow || flow.kind !== "habit") return; flow.draft.repeat = ctx.match[1] as any; if (flow.draft.repeat === "weekly") { flow.step = "frequency"; await ctx.reply("How many times each week? Send a number from 1 to 7."); } else { flow.draft.frequency = 1; saveHabit(ctx); } });
+function saveHabit(ctx: Ctx): void { const data = hub(ctx); const draft = data.flow?.draft; if (!draft?.title || !draft.category || !draft.repeat) return; const id = `h-${data.itemIds.length + 1}`; data.items.push({ id, kind: "habit", title: draft.title, description: draft.description ?? "", category: draft.category, repeat: draft.repeat, frequency: draft.frequency ?? 1, active: true }); data.itemIds.push(id); data.flow = undefined; void ctx.reply("Your habit is ready. Keep it kind and doable.", { reply_markup: inlineKeyboard([[inlineButton("Check in today", "check_in:start"), inlineButton("Back to menu", "menu:main")]]) }); }
 export default composer;

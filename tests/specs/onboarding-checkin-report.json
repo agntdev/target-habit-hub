@@ -1,0 +1,13 @@
+[
+  {"name":"onboarding confirms timezone and creates a NEET template","steps":[
+    {"send":{"text":"/start"},"expect":[{"method":"sendMessage","payload":{"text":"I’ve set your time zone to Asia/Kolkata. Is that right?"}}]},
+    {"send":{"callback":"onboard:timezone:yes"},"expect":[{"method":"editMessageText","payload":{"text":"What time should I remind you to check in?"}}]},
+    {"send":{"callback":"onboard:time:19:00"},"expect":[{"method":"editMessageText","payload":{"text":"Your reminder is ready. Start with a NEET-friendly template, or make your own."}}]},
+    {"send":{"callback":"template:revision"},"expect":[{"method":"editMessageText","payload":{"text":"Your Daily revision target is ready. You can check it in when you’re done."}}]}
+  ]},
+  {"name":"check-in records all four statuses and reports progress","steps":[
+    {"send":{"text":"/start"},"expect":[{"method":"sendMessage"}]}, {"send":{"callback":"onboard:timezone:yes"},"expect":[{"method":"editMessageText"}]}, {"send":{"callback":"onboard:time:19:00"},"expect":[{"method":"editMessageText"}]}, {"send":{"callback":"template:revision"},"expect":[{"method":"editMessageText"}]},
+    {"send":{"callback":"check:t-revision:progress"},"expect":[{"method":"sendMessage","payload":{"text":"Good start — keep going when you’re ready."}}]}, {"send":{"callback":"check:t-revision:skipped"},"expect":[{"method":"sendMessage","payload":{"text":"Skipped is recorded. You can return to this tomorrow."}}]}, {"send":{"callback":"check:t-revision:missed"},"expect":[{"method":"sendMessage","payload":{"text":"Today didn’t go to plan. One gentle restart tomorrow is enough."}}]}, {"send":{"callback":"check:t-revision:done"},"expect":[{"method":"sendMessage","payload":{"text":"Nice work — Daily revision is done. Your streak is 1 days."}}]},
+    {"send":{"callback":"weekly_report:generate"},"expect":[{"method":"sendMessage","payload":{"text":"Your weekly report\nCompleted: 1\nMissed: 0\nStudy time: 1h 0m\nStreak: 1 days\nYou’re building consistency — protect your next study block."}}]}
+  ]}
+]

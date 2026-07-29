@@ -1,17 +1,16 @@
 import { Composer } from "grammy";
+import type { Ctx } from "../bot.js";
+import { CATEGORIES, escapeText, hub } from "../domain.js";
+import { inlineButton, inlineKeyboard, registerMainMenuItem } from "../toolkit/index.js";
 
-// SCAFFOLD — generated from the bot blueprint BEFORE the agent runs.
-// Keep a LIVE registration (.command / .callbackQuery / …) so this feature is
-// never an empty stub. Replace the reply body with real logic + copy; if you
-// change the user-facing text, update tests/specs to match EXACTLY.
-// Do NOT rewrite src/bot.ts — buildBot() already auto-loads this module.
-// Menu: wire this into /start via registerMainMenuItem({ label: "Create Target", data: "create_target:start" }) if the toolkit exposes it.
+registerMainMenuItem({ label: "Create target", data: "create_target:start", order: 10 });
+const composer = new Composer<Ctx>();
+const categories = inlineKeyboard([...CATEGORIES.map((c) => [inlineButton(c, `target:category:${c}`)]), [inlineButton("Custom category", "target:category:custom")], [inlineButton("Back to menu", "menu:main")]]);
 
-const composer = new Composer();
-
-composer.callbackQuery("create_target:start", async (ctx) => {
-  await ctx.answerCallbackQuery();
-  await ctx.reply("Start creating a new study target");
+composer.callbackQuery("create_target:start", async (ctx) => { await ctx.answerCallbackQuery(); hub(ctx).flow = { kind: "target", step: "category", draft: {} }; await ctx.reply("Choose a category for this study target.", { reply_markup: categories }); });
+composer.callbackQuery(/^target:category:(.+)$/, async (ctx) => { await ctx.answerCallbackQuery(); const flow = hub(ctx).flow; if (!flow || flow.kind !== "target") return; const category = ctx.match[1]; if (category === "custom") { flow.step = "title"; flow.draft.category = "Custom"; await ctx.reply("Send the target title, for example Biology diagrams."); return; } flow.draft.category = category; flow.step = "title"; await ctx.reply("Send the target title, for example Biology diagrams."); });
+composer.on("message:text", async (ctx, next) => { const data = hub(ctx); const flow = data.flow; if (!flow || flow.kind !== "target" || ctx.message.text.startsWith("/")) return next(); const value = escapeText(ctx.message.text); if (!value) { await ctx.reply("That looks blank. Send a short title or description."); return; } if (flow.step === "title") { flow.draft.title = value; flow.step = "description"; await ctx.reply("Add a short description, or send Skip."); return; } if (flow.step === "description") { flow.draft.description = value.toLowerCase() === "skip" ? "" : value; flow.step = "repeat"; await ctx.reply("How often should this repeat?", { reply_markup: inlineKeyboard([[inlineButton("Daily", "target:repeat:daily"), inlineButton("Weekdays", "target:repeat:weekdays")], [inlineButton("Times each week", "target:repeat:weekly")], [inlineButton("One-time deadline", "target:repeat:once")]]) }); return; } if (flow.step === "frequency") { const frequency = Number(value); if (!Number.isInteger(frequency) || frequency < 1 || frequency > 7) { await ctx.reply("Choose a number from 1 to 7 for each week."); return; } flow.draft.frequency = frequency; flow.step = "estimate"; await ctx.reply("How many study minutes will this take? Send a number, or Skip."); return; } if (flow.step === "estimate") { if (value.toLowerCase() !== "skip") { const minutes = Number(value); if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) { await ctx.reply("Send minutes from 1 to 1440, or Skip."); return; } flow.draft.estimateMinutes = minutes; } saveTarget(ctx); return; } if (flow.step === "deadline") { if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) { await ctx.reply("Use a date like 2026-08-15."); return; } flow.draft.deadline = value; flow.step = "estimate"; await ctx.reply("How many study minutes will this take? Send a number, or Skip."); }
 });
-
+composer.callbackQuery(/^target:repeat:(daily|weekdays|weekly|once)$/, async (ctx) => { await ctx.answerCallbackQuery(); const flow = hub(ctx).flow; if (!flow || flow.kind !== "target") return; flow.draft.repeat = ctx.match[1] as any; if (flow.draft.repeat === "weekly") { flow.step = "frequency"; await ctx.reply("How many times each week? Send a number from 1 to 7."); return; } if (flow.draft.repeat === "once") { flow.step = "deadline"; await ctx.reply("Send its deadline as YYYY-MM-DD."); return; } flow.draft.frequency = 1; flow.step = "estimate"; await ctx.reply("How many study minutes will this take? Send a number, or Skip."); });
+function saveTarget(ctx: Ctx): void { const data = hub(ctx); const draft = data.flow?.draft; if (!draft?.title || !draft.category || !draft.repeat) return; const id = `t-${data.itemIds.length + 1}`; data.items.push({ id, kind: "target", title: draft.title, description: draft.description ?? "", category: draft.category, repeat: draft.repeat, frequency: draft.frequency ?? 1, deadline: draft.deadline, estimateMinutes: draft.estimateMinutes, active: true }); data.itemIds.push(id); data.flow = undefined; void ctx.reply("Your target is ready. A steady small step counts.", { reply_markup: inlineKeyboard([[inlineButton("Check in today", "check_in:start"), inlineButton("Back to menu", "menu:main")]]) }); }
 export default composer;
