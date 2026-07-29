@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Edit Profile",
+    "steps": [
+      {
+        "expect": [
+          {
+            "method": "sendMessage",
+            "payload": {
+              "text": "Update time zone, reminder settings, or preferences"
+            }
+          }
+        ],
+        "send": {
+          "callback": "edit_profile:start"
+        }
+      }
+    ]
+  }
+]
