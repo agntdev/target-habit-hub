@@ -1,4 +1,5 @@
 import type { Ctx } from "./bot.js";
+import type { InlineKeyboardMarkup } from "grammy/types";
 
 export const CATEGORIES = ["Study", "Health", "Revision", "Practice Questions", "Mock Tests", "Water", "Sleep", "Exercise", "Reading", "Personal Habits"] as const;
 export type Status = "done" | "skipped" | "missed" | "progress";
@@ -37,6 +38,14 @@ export function recordCheckin(data: HubData, itemId: string, status: Status): vo
   if (due.length > 0 && statuses.every((s) => s === "done")) { data.streak.current = Math.max(1, data.streak.current + 1); data.streak.longest = Math.max(data.streak.longest, data.streak.current); data.streak.recoveryOpen = false; }
 }
 export function escapeText(value: string): string { return value.replace(/[<>]/g, "").trim().slice(0, 120); }
+/** Telegram rejects repeated taps that would leave a view unchanged. */
+export async function editView(ctx: Ctx, text: string, replyMarkup?: InlineKeyboardMarkup): Promise<void> {
+  try {
+    await ctx.editMessageText(text, replyMarkup ? { reply_markup: replyMarkup } : undefined);
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes("message is not modified")) throw error;
+  }
+}
 export function progress(data: HubData, days: number): { done: number; total: number; minutes: number; missed: number } {
   const dates = data.checkinDates.slice(-days); const checks = data.checkins.filter((c) => dates.includes(c.date));
   return { done: checks.filter((c) => c.status === "done").length, missed: checks.filter((c) => c.status === "missed").length, total: checks.length, minutes: checks.filter((c) => c.status === "done").reduce((n, c) => n + (data.items.find((i) => i.id === c.itemId)?.estimateMinutes ?? 0), 0) };

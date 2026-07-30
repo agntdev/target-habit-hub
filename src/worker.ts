@@ -30,11 +30,6 @@ let botPromise: Promise<Bot<Ctx>> | null = null;
 function getBot(env: WorkerEnv): Promise<Bot<Ctx>> {
   if (!botPromise) {
     botPromise = (async () => {
-      // Expose the runtime env to handlers (Workers-only; the harness never sets
-      // it) BEFORE they run — a handler reaches bindings + helpers through it
-      // (remindAt(ctx.env, …), ctx.env.DB). buildBot installs `handlers` in array
-      // order, so this must be the FIRST entry, not a trailing bot.use() (which
-      // would run AFTER the feature handlers and leave ctx.env undefined).
       const attachEnv = new Composer<Ctx>();
       attachEnv.use((ctx, next) => {
         (ctx as WorkerCtx).env = env;
